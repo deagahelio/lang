@@ -43,10 +43,9 @@ argument_list: "(" [expression ("," expression)*] ")"
 
 expression_range: value ".." value
 
-expression: "var" ident ":" type "=" expression -> expression_variable_define_typed
-          | "var" ident "=" expression -> expression_variable_define
-          | "var" ident ":" type -> expression_variable_declare_typed
-          | "var" ident -> expression_variable_declare
+expression: type ident "=" expression -> expression_variable_define
+          | "auto" ident "=" expression -> expression_variable_define_auto
+          | type ident -> expression_variable_declare
           | ident "=" expression -> expression_variable_assign
           | ident argument_list -> expression_function_call
           | expression op_bin expression -> expression_op_bin
@@ -62,7 +61,7 @@ statement: expression NEWLINE // TODO: fix this
 
 block: "{" statement* "}"
 
-parameter_list_item: ident ":" type
+parameter_list_item: type ident
 parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
 
 function: "fn" ident parameter_list type block -> function_typed

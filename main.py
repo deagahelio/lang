@@ -12,7 +12,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compiles some code.")
     parser.add_argument("file", help="file to compile")
     parser.add_argument("-b", "--backend", default="c", help="code generation backend to use. available: " + backend_list_pretty)
-    parser.add_argument("-o", "--output", help="output file to write to")
+    parser.add_argument("-o", "--output", required=True, help="output file to write to")
     parser.add_argument("--keep-intermediate", action="store_true", help="keeps the intermediate transpiled source file (for backends that support it)")
     args = parser.parse_args()
 

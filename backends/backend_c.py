@@ -73,7 +73,7 @@ class CBackend(BaseBackend):
             raise CompilerBackendException("invalid parameter list type: " + ast.data)
 
         if len(ast.children) != 0:
-            return "(" + ','.join(TYPE_MAP[node.children[1].children[0].data] + " " + node.children[0].children[0].value for node in ast.children) + ")"
+            return "(" + ','.join(TYPE_MAP[node.children[0].children[0].data] + " " + node.children[1].children[0].value for node in ast.children) + ")"
         else:
             return "(void)"
 
