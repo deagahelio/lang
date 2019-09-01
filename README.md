@@ -2,7 +2,7 @@
 
 A programming language.
 
-```rs
+```rust
 fn fibonacci(n: u32) u32 {
     if n < 2 {
         return 1
