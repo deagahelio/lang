@@ -3,7 +3,9 @@
 A programming language.
 
 ```rust
-fn fibonacci(n: u32) u32 {
+include "stdio"
+
+fn fibonacci(u32 n) u32 {
     if n < 2 {
         return 1
     } else {
