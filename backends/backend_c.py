@@ -59,7 +59,9 @@ class CBackend(BaseBackend):
         if ast.data != "include":
             raise CompilerBackendException("invalid include type: " + ast.data)
         
-        return f"#include " + ast.children[0].value[:-1] + ".h\"\n"
+        include_string = ast.children[0].value
+
+        return f"#include " + include_string[:-1] + ".h\"\n"
     
     def generate_function(self, ast):
         if ast.data not in ("function_typed", "function_void"):
@@ -111,8 +113,10 @@ class CBackend(BaseBackend):
 
             return compiled
         elif ast.data == "statement_for":
-            return f"for(size_t {ast.children[0].children[0].value}={ast.children[1].children[0].children[0].value};\
-{ast.children[0].children[0].value}<{ast.children[1].children[1].children[0].value};{ast.children[0].children[0].value}++){{{self.generate_block(ast.children[2])}}}"
+            for_variable_name = ast.children[0].children[0].value
+            for_start_value = ast.children[1].children[0].children[0].value
+            for_end_value = ast.children[1].children[1].children[0].value
+            return f"for(size_t {for_variable_name}={for_start_value};{for_variable_name}<{for_end_value};{for_variable_name}++){{{self.generate_block(ast.children[2])}}}"
         else:
             raise CompilerBackendException("invalid statement type: " + ast.data)
             
