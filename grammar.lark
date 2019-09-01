@@ -1,0 +1,71 @@
+%import common.SIGNED_INT
+%import common.ESCAPED_STRING
+%import common.CNAME
+%import common.WS
+%import common.NEWLINE
+
+%ignore WS
+
+ident: CNAME
+
+type_pure: "u8" -> u8
+         | "u16" -> u16
+         | "u32" -> u32
+         | "u64" -> u64
+         | "i8" -> i8
+         | "i16" -> i16
+         | "i32" -> i32
+         | "i64" -> i64
+         | "f32" -> f32
+         | "f64" -> f64
+         | "bool" -> bool
+         | "str" -> str
+
+!type: type_pure "*"*
+
+op_bin: "+" -> add
+      | "-" -> subtract
+      | "*" -> multiply
+      | "/" -> divide
+      | "==" -> equal
+      | "!=" -> not_equal
+      | "<" -> less_than
+      | ">" -> greater_than
+
+?value: SIGNED_INT -> number
+      | ESCAPED_STRING -> string
+      | "true" -> true
+      | "false" -> false
+      | ident
+      | "(" value ")" // TODO: fix this later
+
+argument_list: "(" [expression ("," expression)*] ")"
+
+expression_range: value ".." value
+
+expression: "var" ident ":" type "=" expression -> expression_variable_define_typed
+          | "var" ident "=" expression -> expression_variable_define
+          | "var" ident ":" type -> expression_variable_declare_typed
+          | "var" ident -> expression_variable_declare
+          | ident "=" expression -> expression_variable_assign
+          | ident argument_list -> expression_function_call
+          | expression op_bin expression -> expression_op_bin
+          | expression_range
+          | value -> expression_value
+
+statement: expression NEWLINE // TODO: fix this
+         | "return" expression NEWLINE -> statement_return // TODO: and this
+         | "if" expression block ("elif" expression block)* ["else" block] -> statement_if
+         | "for" ident "in" expression_range block -> statement_for
+         | "while" expression block -> statement_while
+         | "loop" block -> statement_loop
+
+block: "{" statement* "}"
+
+parameter_list_item: ident ":" type
+parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
+
+function: "fn" ident parameter_list type block -> function_typed
+        | "fn" ident parameter_list block -> function_void
+
+program: (function)*

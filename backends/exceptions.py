@@ -1,0 +1,2 @@
+class CompilerBackendException(Exception):
+    pass
