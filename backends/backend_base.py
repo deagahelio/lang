@@ -7,7 +7,7 @@ class BaseBackend:
         self.output = args.output
 
     def generate(self, ast):
-        print(ast)
+        print(ast.pretty())
         raise CompilerBackendException("no generation function implemented for backend")
 
     def write_output(self):

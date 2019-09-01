@@ -1,3 +1,5 @@
+include "stdio"
+
 fn fibonacci(u32 n) u32 {
     if n < 2 {
         return 1

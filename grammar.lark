@@ -43,14 +43,15 @@ argument_list: "(" [expression ("," expression)*] ")"
 
 expression_range: value ".." value
 
-expression: type ident "=" expression -> expression_variable_define
-          | "auto" ident "=" expression -> expression_variable_define_auto
-          | type ident -> expression_variable_declare
-          | ident "=" expression -> expression_variable_assign
-          | ident argument_list -> expression_function_call
+expression: ident argument_list -> expression_function_call
           | expression op_bin expression -> expression_op_bin
           | expression_range
           | value -> expression_value
+
+variable_statement: "auto" ident "=" expression -> statement_variable_define_auto
+                  | type ident "=" expression -> statement_variable_define
+                  | type ident -> statement_variable_declare
+                  | ident "=" expression -> statement_variable_assign
 
 statement: expression NEWLINE // TODO: fix this
          | "return" expression NEWLINE -> statement_return // TODO: and this
@@ -58,6 +59,7 @@ statement: expression NEWLINE // TODO: fix this
          | "for" ident "in" expression_range block -> statement_for
          | "while" expression block -> statement_while
          | "loop" block -> statement_loop
+         | variable_statement
 
 block: "{" statement* "}"
 
@@ -67,4 +69,6 @@ parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
 function: "fn" ident parameter_list type block -> function_typed
         | "fn" ident parameter_list block -> function_void
 
-program: (function)*
+include: "include" ESCAPED_STRING
+
+program: include* (variable_statement | function)*

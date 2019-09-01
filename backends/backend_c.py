@@ -7,7 +7,6 @@ BASE_CODE = """\
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <stdio.h>
 """
 
 TYPE_MAP = {
@@ -45,13 +44,22 @@ class CBackend(BaseBackend):
         if ast.data != "program":
             raise CompilerBackendException("invalid program type: " + ast.data)
 
-        #print(ast.pretty())
-
         self.compiled = BASE_CODE
         self.context = {}
 
         for node in ast.children:
-            self.compiled += self.generate_function(node)
+            if node.data == "include":
+                self.compiled += self.generate_include(node)
+            elif node.data in ("function_typed", "function_void"):
+                self.compiled += self.generate_function(node)
+            else: # node.data == statement
+                self.compiled += self.generate_statement(node)
+    
+    def generate_include(self, ast):
+        if ast.data != "include":
+            raise CompilerBackendException("invalid include type: " + ast.data)
+        
+        return f"#include " + ast.children[0].value[:-1] + ".h\"\n"
     
     def generate_function(self, ast):
         if ast.data not in ("function_typed", "function_void"):
