@@ -1,0 +1,19 @@
+include "stdio"
+
+struct Point {
+    i32 x
+    i32 y
+
+    fn translate(i32 x, i32 y) {
+        self->x += x
+        self->y += y
+    }
+}
+
+fn main() i32 {
+    struct Point point
+    printf("%d %d\n", point.x, point.y)
+    point.translate(3, 5)
+    printf("%d %d\n", point.x, point.y)
+    return 0
+}

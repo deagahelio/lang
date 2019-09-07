@@ -21,7 +21,8 @@ type_pure: "u8" -> u8
          | "bool" -> bool
          | "str" -> str
 
-!type: type_pure "*"*
+type: type_pure -> type_builtin
+    | "struct" ident -> type_struct
 
 op_bin: "+" -> add
       | "-" -> subtract
@@ -31,6 +32,10 @@ op_bin: "+" -> add
       | "!=" -> not_equal
       | "<" -> less_than
       | ">" -> greater_than
+      | "+=" -> add_eq
+      | "-=" -> subtract_eq
+      | "*=" -> multiply_eq
+      | "/=" -> divide_eq
 
 ?value: SIGNED_INT -> number
       | ESCAPED_STRING -> string
@@ -43,32 +48,41 @@ argument_list: "(" [expression ("," expression)*] ")"
 
 expression_range: value ".." value
 
-expression: ident argument_list -> expression_function_call
+expression: expression argument_list -> expression_function_call
           | expression op_bin expression -> expression_op_bin
           | expression_range
+          | expression "->" ident -> expression_arrow
+          | expression "." ident -> expression_dot
           | value -> expression_value
 
-variable_statement: "auto" ident "=" expression -> statement_variable_define_auto
-                  | type ident "=" expression -> statement_variable_define
-                  | type ident -> statement_variable_declare
-                  | ident "=" expression -> statement_variable_assign
+variable_statement: "auto" ident "=" expression NEWLINE -> statement_variable_define_auto
+                  | type ident "=" expression NEWLINE -> statement_variable_define
+                  | type ident NEWLINE -> statement_variable_declare
+                  | ident "=" expression NEWLINE -> statement_variable_assign
 
-statement: expression NEWLINE // TODO: fix this
-         | "return" expression NEWLINE -> statement_return // TODO: and this
-         | "if" expression block ("elif" expression block)* ["else" block] -> statement_if
-         | "for" ident "in" expression_range block -> statement_for
-         | "while" expression block -> statement_while
-         | "loop" block -> statement_loop
-         | variable_statement
+?statement: expression NEWLINE // TODO: fix this
+          | "return" expression NEWLINE -> statement_return // TODO: and this
+          | "if" expression block ("elif" expression block)* ["else" block] -> statement_if
+          | "for" ident "in" expression_range block -> statement_for
+          | "while" expression block -> statement_while
+          | "loop" block -> statement_loop
+          | variable_statement
 
 block: "{" statement* "}"
 
 parameter_list_item: type ident
 parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
 
-function: "fn" ident parameter_list type block -> function_typed
-        | "fn" ident parameter_list block -> function_void
+?function: "fn" ident parameter_list type block -> function_typed
+         | "fn" ident parameter_list block -> function_void
+
+?struct_block_item: type ident NEWLINE -> struct_property
+                  | function
+
+struct_block: "{" struct_block_item* "}"
+
+struct: "struct" ident struct_block
 
 include: "include" ESCAPED_STRING
 
-program: include* (variable_statement | function)*
+program: include* (variable_statement | function | struct)*
