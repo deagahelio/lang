@@ -21,8 +21,8 @@ type_pure: "u8" -> u8
          | "bool" -> bool
          | "str" -> str
 
-type: type_pure -> type_builtin
-    | "struct" ident -> type_struct
+!type: type_pure "*"* -> type_builtin
+     | "class" ident "*"* -> type_class
 
 op_bin: "+" -> add
       | "-" -> subtract
@@ -41,6 +41,7 @@ op_bin: "+" -> add
       | ESCAPED_STRING -> string
       | "true" -> true
       | "false" -> false
+      | "null" -> null
       | ident
       | "(" value ")" // TODO: fix this later
 
@@ -48,7 +49,9 @@ argument_list: "(" [expression ("," expression)*] ")"
 
 expression_range: value ".." value
 
-expression: expression argument_list -> expression_function_call
+expression: "&" expression -> expression_ref
+          | "*" expression -> expression_deref
+          | expression argument_list -> expression_function_call
           | expression op_bin expression -> expression_op_bin
           | expression_range
           | expression "->" ident -> expression_arrow
@@ -58,7 +61,7 @@ expression: expression argument_list -> expression_function_call
 variable_statement: "auto" ident "=" expression NEWLINE -> statement_variable_define_auto
                   | type ident "=" expression NEWLINE -> statement_variable_define
                   | type ident NEWLINE -> statement_variable_declare
-                  | ident "=" expression NEWLINE -> statement_variable_assign
+                  | expression "=" expression NEWLINE -> statement_variable_assign
 
 ?statement: expression NEWLINE // TODO: fix this
           | "return" expression NEWLINE -> statement_return // TODO: and this
@@ -76,13 +79,13 @@ parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
 ?function: "fn" ident parameter_list type block -> function_typed
          | "fn" ident parameter_list block -> function_void
 
-?struct_block_item: type ident NEWLINE -> struct_property
-                  | function
+?class_block_item: type ident NEWLINE -> class_property
+                 | function
 
-struct_block: "{" struct_block_item* "}"
+class_block: "{" class_block_item* "}"
 
-struct: "struct" ident struct_block
+class: "class" ident class_block
 
 include: "include" ESCAPED_STRING
 
-program: include* (variable_statement | function | struct)*
+program: include* (variable_statement | function | class)*

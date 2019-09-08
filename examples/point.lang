@@ -1,6 +1,6 @@
 include "stdio"
 
-struct Point {
+class Point {
     i32 x
     i32 y
 
@@ -8,12 +8,26 @@ struct Point {
         self->x += x
         self->y += y
     }
+
+    fn __add__(class Point* rhs) class Point {
+        class Point point
+        point.x = self->x + rhs->x
+        point.y = self->y + rhs->y
+        return point
+    }
 }
 
 fn main() i32 {
-    struct Point point
-    printf("%d %d\n", point.x, point.y)
-    point.translate(3, 5)
-    printf("%d %d\n", point.x, point.y)
+    class Point point1
+    point1.x = 2
+    point1.y = 3
+
+    class Point point2
+    point2.x = 5
+    point2.y = 6
+
+    class Point point3 = point1.__add__(&point2)
+    printf("%d %d\n", point3.x, point3.y)
+
     return 0
 }

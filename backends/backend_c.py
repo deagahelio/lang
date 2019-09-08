@@ -38,6 +38,8 @@ OP_BIN_MAP = {
     "divide_eq": "/=",
 }
 
+OVERLOAD_NAMES = [f"__{op}__" for op in OP_BIN_MAP.keys()]
+
 class CBackend(BaseBackend):
     def __init__(self, args):
         super().__init__(args)
@@ -50,47 +52,60 @@ class CBackend(BaseBackend):
         if ast.data != "program":
             raise CompilerBackendException("invalid program type: " + ast.data)
 
-        self.compiled = BASE_CODE
-        self.context = {}
+        self.compiled = ""
+        self.context = {
+            "includes": "",
+            "data_decls": "",
+            "fn_decls": "",
+            "overloads": {},
+        }
 
         for node in ast.children:
             if node.data == "include":
-                self.compiled += self.generate_include(node)
+                self.context["includes"] = self.context["includes"] + self.generate_include(node)
             elif node.data in ("function_typed", "function_void"):
                 self.compiled += self.generate_function(node)
-            elif node.data == "struct":
-                self.compiled += self.generate_struct(node)
+            elif node.data == "class":
+                self.compiled += self.generate_class(node)
             else: # node.data == statement
                 self.compiled += self.generate_statement(node)
+        
+        self.compiled = BASE_CODE + self.context["includes"] + self.context["data_decls"] + self.context["fn_decls"] + self.compiled
     
-    def generate_struct(self, ast):
-        struct_name = ast.children[0].children[0].value
+    def generate_class(self, ast):
+        class_name = ast.children[0].children[0].value
 
         self.context["method_data"] = {
-            "struct_name": struct_name,
+            "class_name": class_name,
         }
 
-        struct_block = self.generate_struct_block(ast.children[1])
-        struct_init_block = ""
+        class_block = self.generate_class_block(ast.children[1])
+        class_init_block = ""
 
-        compiled = f"struct {struct_name}{{{struct_block}}};"
+        self.context["data_decls"] += f"struct {class_name}{{{class_block}}};"
+
+        compiled = ""
 
         for name, node in self.context["later"]["methods"].items():
-            struct_init_block += f"self->{name}=&__struct_{struct_name}_{name};"
+            class_init_block += f"self->{name}=&__class_{class_name}_{name};"
             compiled += self.generate_function(node, method=True)
 
-        compiled += f"void __struct_{struct_name}_init(struct {struct_name}* self){{{struct_init_block}}}"
+        init_declaration = f"void __class_{class_name}_init(struct {class_name}* self)"
+
+        self.context["fn_decls"] += init_declaration + ";"
+
+        compiled += f"{init_declaration}{{{class_init_block}}}"
 
         return compiled
     
-    def generate_struct_block(self, ast):
+    def generate_class_block(self, ast):
         compiled = ""
         self.context["later"] = {
             "methods": {}
         }
 
         for node in ast.children:
-            if node.data == "struct_property":
+            if node.data == "class_property":
                 compiled += f"{self.generate_type(node.children[0])} {node.children[1].children[0].value};"
             else: # node.data == function
                 if node.data == "function_void":
@@ -117,7 +132,13 @@ class CBackend(BaseBackend):
             raise CompilerBackendException("invalid function type: " + ast.data)
 
         if method:
-            fn_name = f"__struct_{self.context['method_data']['struct_name']}_{ast.children[0].children[0].value}"
+            pure_fn_name = ast.children[0].children[0].value
+            class_name = self.context['method_data']['class_name']
+            fn_name = f"__class_{class_name}_{pure_fn_name}"
+            if pure_fn_name in OVERLOAD_NAMES:
+                if class_name not in self.context["overloads"]:
+                    self.context["overloads"][class_name] = []
+                self.context["overloads"][class_name].append(pure_fn_name)
         else:
             fn_name = ast.children[0].children[0].value
 
@@ -128,7 +149,11 @@ class CBackend(BaseBackend):
 
         self.context["current_function"] = fn_name
         
-        return f"{fn_type} {fn_name}{self.generate_parameter_list(ast.children[1], method=method)}{{{self.generate_block(ast.children[-1])}}}"
+        fn_declaration = f"{fn_type} {fn_name}{self.generate_parameter_list(ast.children[1], method=method)}"
+
+        self.context["fn_decls"] += fn_declaration + ";"
+
+        return f"{fn_declaration}{{{self.generate_block(ast.children[-1])}}}"
     
     def generate_parameter_list(self, ast, method=False):
         if ast.data != "parameter_list":
@@ -137,9 +162,11 @@ class CBackend(BaseBackend):
         if len(ast.children) != 0:
             inner = ','.join(self.generate_type(node.children[0]) + " " + node.children[1].children[0].value for node in ast.children)
             if method:
-                inner = f"struct {self.context['method_data']['struct_name']}* self," + inner
+                inner = f"struct {self.context['method_data']['class_name']}* self," + inner
             return f"({inner})"
         else:
+            if method:
+                return f"(struct {self.context['method_data']['class_name']}* self)"
             return "(void)"
 
     def generate_block(self, ast):
@@ -175,17 +202,23 @@ class CBackend(BaseBackend):
         elif ast.data == "statement_variable_define":
             return f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value}={self.generate_expression(ast.children[2])};"
         elif ast.data == "statement_variable_declare":
-            if ast.children[0].data == "type_struct":
+            if ast.children[0].data == "type_class":
                 compiled = f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value}={{0}};\
-__struct_{ast.children[0].children[0].children[0].value}_init(&{ast.children[1].children[0].value});"
+__class_{ast.children[0].children[1].children[0].value}_init(&{ast.children[1].children[0].value});"
             else:
                 compiled = f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value};"
             return compiled
+        elif ast.data == "statement_variable_assign":
+            return f"{self.generate_expression(ast.children[0])}={self.generate_expression(ast.children[1])};"
         else:
             raise CompilerBackendException("invalid statement type: " + ast.data)
             
     def generate_expression(self, ast):
-        if ast.data == "expression_function_call":
+        if ast.data == "expression_ref":
+            return f"(&{self.generate_expression(ast.children[0])})"
+        elif ast.data == "expression_deref":
+            return f"(*{self.generate_expression(ast.children[0])})"
+        elif ast.data == "expression_function_call":
             fn_name = self.generate_expression(ast.children[0])
             if fn_name == "this":
                 fn_name = self.context["current_function"]
@@ -194,7 +227,7 @@ __struct_{ast.children[0].children[0].children[0].value}_init(&{ast.children[1].
                 method = True
                 op = "&" if ast.children[0].data == "expression_dot" else ""
                 self.context["method_data"] = {
-                    "struct_name": op + self.generate_expression(ast.children[0].children[0]),
+                    "class_name": op + self.generate_expression(ast.children[0].children[0]),
                 }
             else:
                 method = False
@@ -219,15 +252,22 @@ __struct_{ast.children[0].children[0].children[0].value}_init(&{ast.children[1].
         inner = ','.join(map(self.generate_expression, ast.children))
         
         if method:
-            inner = self.context["method_data"]["struct_name"] + "," + inner
+            inner = self.context["method_data"]["class_name"] + "," + inner
 
         return f"({inner})"
     
     def generate_type(self, ast):
+        ptr = ""
+        try:
+            if ast.children[-1].value[0] == "*":
+                ptr = ast.children[-1].value
+        except AttributeError:
+            pass
+
         if ast.data == "type_builtin":
-            return TYPE_MAP[ast.children[0].data]
-        elif ast.data == "type_struct":
-            return "struct " + ast.children[0].children[0].value
+            return TYPE_MAP[ast.children[0].data] + ptr
+        elif ast.data == "type_class":
+            return "struct " + ast.children[1].children[0].value + ptr
         else:
             raise CompilerBackendException("invalid type type: " + ast.data)
     
