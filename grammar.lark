@@ -79,10 +79,9 @@ parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
 ?function: "fn" ident parameter_list type block -> function_typed
          | "fn" ident parameter_list block -> function_void
 
-?class_block_item: type ident NEWLINE -> class_property
-                 | function
+class_property: type ident NEWLINE
 
-class_block: "{" class_block_item* "}"
+class_block: "{" class_property* function* "}"
 
 class: "class" ident class_block
 

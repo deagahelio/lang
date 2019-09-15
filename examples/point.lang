@@ -26,7 +26,7 @@ fn main() i32 {
     point2.x = 5
     point2.y = 6
 
-    class Point point3 = point1.__add__(&point2)
+    class Point point3 = point1 + point2
     printf("%d %d\n", point3.x, point3.y)
 
     return 0

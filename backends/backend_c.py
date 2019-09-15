@@ -1,7 +1,10 @@
 import subprocess, os
+from collections import namedtuple
 
 from .exceptions import CompilerBackendException
 from .backend_base import BaseBackend
+
+Type = namedtuple("Type", "type name ptr")
 
 BASE_CODE = """\
 #include <stdint.h>
@@ -21,6 +24,13 @@ TYPE_MAP = {
     "f32": "float",
     "f64": "double",
     "bool": "bool",
+}
+
+VALUE_TYPE_MAP = {
+    "number": Type("builtin", "i32", 0),
+    "string": Type("builtin", "u8", 1),
+    "true": Type("builtin", "bool", 0),
+    "false": Type("builtin", "bool", 0),
 }
 
 OP_BIN_MAP = {
@@ -58,6 +68,11 @@ class CBackend(BaseBackend):
             "data_decls": "",
             "fn_decls": "",
             "overloads": {},
+            "export": {
+                "class": {},
+                "fn": {},
+                "var": {},
+            },
         }
 
         for node in ast.children:
@@ -77,6 +92,11 @@ class CBackend(BaseBackend):
 
         self.context["method_data"] = {
             "class_name": class_name,
+        }
+
+        self.context["export"]["class"][class_name] = {
+            "fn": {},
+            "var": {},
         }
 
         class_block = self.generate_class_block(ast.children[1])
@@ -106,7 +126,9 @@ class CBackend(BaseBackend):
 
         for node in ast.children:
             if node.data == "class_property":
-                compiled += f"{self.generate_type(node.children[0])} {node.children[1].children[0].value};"
+                var_name = node.children[1].children[0].value
+                self.context["export"]["class"][self.context["method_data"]["class_name"]]["var"][var_name] = self.parse_type(node.children[0])
+                compiled += f"{self.generate_type(node.children[0])} {var_name};"
             else: # node.data == function
                 if node.data == "function_void":
                     fn_type = "void"
@@ -131,9 +153,11 @@ class CBackend(BaseBackend):
         if ast.data not in ("function_typed", "function_void"):
             raise CompilerBackendException("invalid function type: " + ast.data)
 
+        locals = {}
+
         if method:
             pure_fn_name = ast.children[0].children[0].value
-            class_name = self.context['method_data']['class_name']
+            class_name = self.context["method_data"]["class_name"]
             fn_name = f"__class_{class_name}_{pure_fn_name}"
             if pure_fn_name in OVERLOAD_NAMES:
                 if class_name not in self.context["overloads"]:
@@ -141,6 +165,7 @@ class CBackend(BaseBackend):
                 self.context["overloads"][class_name].append(pure_fn_name)
         else:
             fn_name = ast.children[0].children[0].value
+            pure_fn_name = fn_name
 
         if ast.data == "function_typed":
             fn_type = self.generate_type(ast.children[2])
@@ -149,40 +174,64 @@ class CBackend(BaseBackend):
 
         self.context["current_function"] = fn_name
         
-        fn_declaration = f"{fn_type} {fn_name}{self.generate_parameter_list(ast.children[1], method=method)}"
+        fn_declaration = f"{fn_type} {fn_name}{self.generate_parameter_list(ast.children[1], method=method, locals=locals)}"
 
         self.context["fn_decls"] += fn_declaration + ";"
 
-        return f"{fn_declaration}{{{self.generate_block(ast.children[-1])}}}"
+        if method:
+            export = self.context["export"]["class"][class_name]["fn"]
+        else:
+            export = self.context["export"]["fn"]
+
+        export[pure_fn_name] = {
+            "type": self.parse_type(ast.children[2]) if fn_type != "void" else None,
+            "params": [(self.parse_type(node.children[0]), node.children[1].children[0].value) for node in ast.children[1].children],
+        }
+
+        #print(fn_name)
+        #print(self.context["export"]["fn"][fn_name])
+
+        return f"{fn_declaration}{{{self.generate_block(ast.children[-1], locals=locals)}}}"
     
-    def generate_parameter_list(self, ast, method=False):
+    def generate_parameter_list(self, ast, method=False, locals=None):
         if ast.data != "parameter_list":
             raise CompilerBackendException("invalid parameter list type: " + ast.data)
 
         if len(ast.children) != 0:
-            inner = ','.join(self.generate_type(node.children[0]) + " " + node.children[1].children[0].value for node in ast.children)
+            params = []
+            for node in ast.children:
+                var_name = node.children[1].children[0].value
+                params.append(self.generate_type(node.children[0]) + " " + var_name)
+                if locals != None:
+                    locals[var_name] = self.parse_type(node.children[0])
+                    print(locals)
+            inner = ','.join(params)
             if method:
-                inner = f"struct {self.context['method_data']['class_name']}* self," + inner
+                class_name = self.context["method_data"]["class_name"]
+                if locals != None:
+                    locals["self"] = Type("class", class_name, 1)
+                    print(locals)
+                inner = f"struct {class_name}* self," + inner
             return f"({inner})"
         else:
             if method:
                 return f"(struct {self.context['method_data']['class_name']}* self)"
             return "(void)"
 
-    def generate_block(self, ast):
+    def generate_block(self, ast, locals=None):
         if ast.data != "block":
             raise CompilerBackendException("invalid block type: " + ast.data)
 
         compiled = ""
 
         for node in ast.children:
-            compiled += self.generate_statement(node)
+            compiled += self.generate_statement(node, locals=locals)
         
         return compiled
     
-    def generate_statement(self, ast):
+    def generate_statement(self, ast, locals=None):
         if ast.data == "statement":
-            return f"{self.generate_expression(ast.children[0])};"
+            return f"{self.generate_expression(ast.children[0], locals=locals)};"
         elif ast.data == "statement_return":
             return f"return {self.generate_expression(ast.children[0])};"
         elif ast.data == "statement_if":
@@ -200,26 +249,34 @@ class CBackend(BaseBackend):
             for_end_value = ast.children[1].children[1].children[0].value
             return f"for(size_t {for_variable_name}={for_start_value};{for_variable_name}<{for_end_value};{for_variable_name}++){{{self.generate_block(ast.children[2])}}}"
         elif ast.data == "statement_variable_define":
-            return f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value}={self.generate_expression(ast.children[2])};"
+            var_name = ast.children[1].children[0].value
+            if locals != None:
+                locals[var_name] = self.parse_type(ast.children[0])
+                print(locals)
+            return f"{self.generate_type(ast.children[0])} {var_name}={self.generate_expression(ast.children[2], locals=locals)};"
         elif ast.data == "statement_variable_declare":
+            var_name = ast.children[1].children[0].value
+            if locals != None:
+                locals[var_name] = self.parse_type(ast.children[0])
+                print(locals)
             if ast.children[0].data == "type_class":
-                compiled = f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value}={{0}};\
-__class_{ast.children[0].children[1].children[0].value}_init(&{ast.children[1].children[0].value});"
+                compiled = f"{self.generate_type(ast.children[0])} {var_name}={{0}};\
+__class_{ast.children[0].children[1].children[0].value}_init(&{var_name});"
             else:
                 compiled = f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value};"
             return compiled
         elif ast.data == "statement_variable_assign":
-            return f"{self.generate_expression(ast.children[0])}={self.generate_expression(ast.children[1])};"
+            return f"{self.generate_expression(ast.children[0], locals=locals)}={self.generate_expression(ast.children[1], locals=locals)};"
         else:
             raise CompilerBackendException("invalid statement type: " + ast.data)
             
-    def generate_expression(self, ast):
+    def generate_expression(self, ast, locals=None):
         if ast.data == "expression_ref":
-            return f"(&{self.generate_expression(ast.children[0])})"
+            return f"(&{self.generate_expression(ast.children[0], locals=locals)})"
         elif ast.data == "expression_deref":
-            return f"(*{self.generate_expression(ast.children[0])})"
+            return f"(*{self.generate_expression(ast.children[0], locals=locals)})"
         elif ast.data == "expression_function_call":
-            fn_name = self.generate_expression(ast.children[0])
+            fn_name = self.generate_expression(ast.children[0], locals=locals)
             if fn_name == "this":
                 fn_name = self.context["current_function"]
 
@@ -227,7 +284,7 @@ __class_{ast.children[0].children[1].children[0].value}_init(&{ast.children[1].c
                 method = True
                 op = "&" if ast.children[0].data == "expression_dot" else ""
                 self.context["method_data"] = {
-                    "class_name": op + self.generate_expression(ast.children[0].children[0]),
+                    "class_name": op + self.generate_expression(ast.children[0].children[0], locals=locals),
                 }
             else:
                 method = False
@@ -235,11 +292,17 @@ __class_{ast.children[0].children[1].children[0].value}_init(&{ast.children[1].c
             fn_argument_list = self.generate_argument_list(ast.children[1], method=method)
             return f"({fn_name}{fn_argument_list})"
         elif ast.data == "expression_op_bin":
-            return f"({self.generate_expression(ast.children[0])}{OP_BIN_MAP[ast.children[1].data]}{self.generate_expression(ast.children[2])})"
+            type = self.infer_type(ast.children[0], locals=locals)
+            if type.type == "class":
+                fn_name = f"__{ast.children[1].data}__"
+                if fn_name in self.context["export"]["class"][type.name]["fn"]:
+                    return f"(__class_{type.name}_{fn_name}(&{self.generate_expression(ast.children[0])},&{self.generate_expression(ast.children[2], locals=locals)}))"
+            else:
+                return f"({self.generate_expression(ast.children[0], locals=locals)}{OP_BIN_MAP[ast.children[1].data]}{self.generate_expression(ast.children[2], locals=locals)})"
         elif ast.data == "expression_arrow":
-            return f"({self.generate_expression(ast.children[0])}->{ast.children[1].children[0].value})"
+            return f"({self.generate_expression(ast.children[0], locals=locals)}->{ast.children[1].children[0].value})"
         elif ast.data == "expression_dot":
-            return f"({self.generate_expression(ast.children[0])}.{ast.children[1].children[0].value})"
+            return f"({self.generate_expression(ast.children[0], locals=locals)}.{ast.children[1].children[0].value})"
         elif ast.data == "expression_value":
             return f"({ast.children[0].children[0].value})"
         else:
@@ -270,6 +333,55 @@ __class_{ast.children[0].children[1].children[0].value}_init(&{ast.children[1].c
             return "struct " + ast.children[1].children[0].value + ptr
         else:
             raise CompilerBackendException("invalid type type: " + ast.data)
+    
+    def parse_type(self, ast):
+        ptr = 0
+        try:
+            if ast.children[-1].value[0] == "*":
+                ptr = len(ast.children[-1].value)
+        except AttributeError:
+            pass
+
+        if ast.data == "type_builtin":
+            return Type("builtin", ast.children[0].data, ptr)
+        elif ast.data == "type_class":
+            return Type("class", ast.children[1].children[0].value, ptr)
+        else:
+            raise CompilerBackendException("can't parse unknown type type: " + ast.data)
+
+    def infer_type(self, ast, locals=None):
+        if ast.data == "expression_ref":
+            type = self.infer_type(ast.children[0], locals=locals)
+            return type._replace(ptr=type.ptr + 1)
+        elif ast.data == "expression_deref":
+            type = self.infer_type(ast.children[0], locals=locals)
+            return type._replace(ptr=type.ptr - 1)
+        elif ast.data == "expression_function_call":
+            raise CompilerBackendException("don't know how to infer function call type")
+        elif ast.data == "expression_op_bin":
+            type_l = self.infer_type(ast.children[0], locals=locals)
+            type_r = self.infer_type(ast.children[2], locals=locals)
+            if type_l == type_r:
+                return type_l
+            raise CompilerBackendException("can't apply binary operation to expressions of different type")
+        elif ast.data == "expression_arrow":
+            type_l = self.infer_type(ast.children[0], locals=locals)
+            print(type_l)
+            if not (type_l.type == "class" and type_l.ptr == 1):
+                raise CompilerBackendException("left side of arrow expression is not pointer to class")
+            return self.context["export"]["class"][type_l.name]["var"][ast.children[1].children[0].value]
+        elif ast.data == "expression_dot":
+            raise CompilerBackendException("don't know how to infer dot expression type")
+        elif ast.data == "expression_value":
+            print(f">>> {ast}")
+            type = ast.children[0].data
+            if type == "ident":
+                return locals[ast.children[0].children[0].value]
+            return VALUE_TYPE_MAP[type]
+        elif ast.data == "ident":
+            return locals[ast.children[0].value]
+        else:
+            raise CompilerBackendException("don't know how to infer unknown expression type: " + ast.data)
     
     def write_output(self):
         source_file = self.output + ".source.c"
