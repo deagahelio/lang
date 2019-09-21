@@ -84,6 +84,9 @@ class CBackend(BaseBackend):
         self.compiled = BASE_CODE + self.context["includes"] + self.context["data_decls"] + self.context["fn_decls"] + self.compiled
     
     def generate_class(self, ast):
+        if ast.data != "class":
+            raise CompilerBackendException("invalid class type: " + ast.data)
+
         class_name = ast.children[0].children[0].value
 
         self.context["class_name"] = class_name
@@ -110,6 +113,9 @@ class CBackend(BaseBackend):
         return compiled
     
     def generate_class_block(self, ast):
+        if ast.data != "class_block":
+            raise CompilerBackendException("invalid class block type: " + ast.data)
+
         compiled = ""
         self.context["later"] = {
             "methods": {}
