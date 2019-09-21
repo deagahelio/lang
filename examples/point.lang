@@ -9,8 +9,8 @@ class Point {
         self->y += y
     }
 
-    fn __add__(class Point* rhs) class Point {
-        class Point point
+    fn __add__(Point* rhs) Point {
+        var Point point
         point.x = self->x + rhs->x
         point.y = self->y + rhs->y
         return point
@@ -18,15 +18,15 @@ class Point {
 }
 
 fn main() i32 {
-    class Point point1
+    var Point point1
     point1.x = 2
     point1.y = 3
 
-    class Point point2
+    var Point point2
     point2.x = 5
     point2.y = 6
 
-    class Point point3 = point1 + point2
+    var Point point3 = point1 + point2
     printf("%d %d\n", point3.x, point3.y)
 
     return 0

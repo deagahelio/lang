@@ -334,9 +334,9 @@ class CBackend(BaseBackend):
             var_name = ast.children[1].children[0].value
             if locals != None:
                 locals[var_name] = self.parse_type(ast.children[0])
-            if ast.children[0].data == "type_class":
+            if ast.children[0].data == "type_userdef":
                 compiled = f"{self.generate_type(ast.children[0])} {var_name}={{0}};\
-__class_{ast.children[0].children[1].children[0].value}_init(&{var_name});"
+__class_{ast.children[0].children[0].children[0].value}_init(&{var_name});"
             else:
                 compiled = f"{self.generate_type(ast.children[0])} {ast.children[1].children[0].value};"
             return compiled
@@ -402,8 +402,8 @@ __class_{ast.children[0].children[1].children[0].value}_init(&{var_name});"
 
         if ast.data == "type_builtin":
             return TYPE_MAP[ast.children[0].data] + ptr
-        elif ast.data == "type_class":
-            return "struct " + ast.children[1].children[0].value + ptr
+        elif ast.data == "type_userdef":
+            return "struct " + ast.children[0].children[0].value + ptr
         else:
             raise CompilerBackendException("invalid type type: " + ast.data)
     
@@ -417,8 +417,8 @@ __class_{ast.children[0].children[1].children[0].value}_init(&{var_name});"
 
         if ast.data == "type_builtin":
             return Type("builtin", ast.children[0].data, ptr)
-        elif ast.data == "type_class":
-            return Type("class", ast.children[1].children[0].value, ptr)
+        elif ast.data == "type_userdef":
+            return Type("class", ast.children[0].children[0].value, ptr)
         else:
             raise CompilerBackendException("can't parse unknown type type: " + ast.data)
 

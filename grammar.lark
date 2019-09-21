@@ -22,7 +22,7 @@ type_pure: "u8" -> u8
          | "str" -> str
 
 !type: type_pure "*"* -> type_builtin
-     | "class" ident "*"* -> type_class
+     | ident "*"* -> type_userdef
 
 op_bin: "+" -> add
       | "-" -> subtract
@@ -58,9 +58,9 @@ expression: "&" expression -> expression_ref
           | expression "." ident -> expression_dot
           | value -> expression_value
 
-variable_statement: "auto" ident "=" expression NEWLINE -> statement_variable_define_auto
-                  | type ident "=" expression NEWLINE -> statement_variable_define
-                  | type ident NEWLINE -> statement_variable_declare
+variable_statement: "var" ident "=" expression NEWLINE -> statement_variable_define_auto
+                  | "var" type ident "=" expression NEWLINE -> statement_variable_define
+                  | "var" type ident NEWLINE -> statement_variable_declare
                   | expression "=" expression NEWLINE -> statement_variable_assign
 
 ?statement: expression NEWLINE // TODO: fix this
