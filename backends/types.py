@@ -6,6 +6,12 @@ class Type:
         self.name = name
         self.ptr = ptr
 
+    def __eq__(self, other):
+        return (
+            self.type == other.type and
+            self.name == other.name and
+            self.ptr == other.ptr)
+
     def __str__(self, i=0):
         return i * "\t" + f"{self.name}{self.ptr * '*'}"
 
@@ -17,6 +23,11 @@ class Param:
         self.type = type
         self.name = name
 
+    def __eq__(self, other):
+        return (
+            self.type == other.type and
+            self.name == other.name)
+
     def __str__(self, i=0):
         return i * "\t" + f"{str(self.type)} {self.name}"
     
@@ -27,6 +38,11 @@ class Func:
     def __init__(self, type: Type, params: List[Param]):
         self.type = type
         self.params = params
+
+    def __eq__(self, other):
+        return (
+            self.type == other.type and
+            self.params == other.params)
 
     def __str__(self, name="", i=0):
         return """\
@@ -45,6 +61,12 @@ class Class:
         self.vars = vars
         self.fns = fns
         self.overloads = overloads
+
+    def __eq__(self, other):
+        return (
+            self.vars == other.vars and
+            self.fns == other.fns and
+            self.overloads == other.overloads)
 
     def __str__(self, name="", i=0):
         return """\
@@ -68,7 +90,13 @@ class Export:
         self.classes = classes
         self.fns = fns
         self.vars = vars
-    
+
+    def __eq__(self, other):
+        return (
+            self.classes == other.classes and
+            self.fns == other.fns and
+            self.vars == other.vars)
+
     def __str__(self, i=0):
         return """\
 {i}export {{

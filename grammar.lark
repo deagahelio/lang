@@ -66,7 +66,7 @@ variable_statement: "var" ident "=" expression NEWLINE -> statement_variable_def
 ?statement: expression NEWLINE // TODO: fix this
           | "return" expression NEWLINE -> statement_return // TODO: and this
           | "if" expression block ("elif" expression block)* ["else" block] -> statement_if
-          | "for" ident "in" expression_range block -> statement_for
+          | "for" ident "in" expression_range block -> statement_for // TODO: allow other loop types
           | "while" expression block -> statement_while
           | "loop" block -> statement_loop
           | variable_statement
