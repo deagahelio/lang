@@ -1,6 +1,6 @@
 include "stdio"
 
-class Point {
+struct Point {
     i32 x
     i32 y
 

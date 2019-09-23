@@ -56,7 +56,7 @@ class Func:
     def str(self, name="", i=0):
         return self.__str__(name, i)
 
-class Class:
+class Struct:
     def __init__(self, vars: Dict[str, Type] = {}, fns: Dict[str, Func] = {}, overloads: Dict[str, Func] = {}):
         self.vars = vars
         self.fns = fns
@@ -70,7 +70,7 @@ class Class:
 
     def __str__(self, name="", i=0):
         return """\
-{i}class {name} {{
+{i}struct {name} {{
 {vars}
 {fns}
 {overloads}
@@ -86,22 +86,22 @@ class Class:
         return self.__str__(name, i)
 
 class Export:
-    def __init__(self, classes: Dict[str, Class] = {}, fns: Dict[str, Func] = {}, vars: Dict[str, Type] = {}):
-        self.classes = classes
+    def __init__(self, structs: Dict[str, Struct] = {}, fns: Dict[str, Func] = {}, vars: Dict[str, Type] = {}):
+        self.structs = structs
         self.fns = fns
         self.vars = vars
 
     def __eq__(self, other):
         return (
-            self.classes == other.classes and
+            self.structs == other.structs and
             self.fns == other.fns and
             self.vars == other.vars)
 
     def __str__(self, i=0):
         return """\
 {i}export {{
-{i}\tclasses {{
-{classes}
+{i}\tstructs {{
+{structs}
 {i}\t}}
 {i}\tfns {{
 {fns}
@@ -111,7 +111,7 @@ class Export:
 {i}\t}}
 {i}}}\
 """.format(
-    classes="\n".join(v.str(k, i + 2) for k, v in self.classes.items()),
+    structs="\n".join(v.str(k, i + 2) for k, v in self.structs.items()),
     fns="\n".join(v.str(k, i + 2) for k, v in self.fns.items()),
     vars="\n".join(v.str(k, i + 2) for k, v in self.vars.items()),
     i=i * "\t")

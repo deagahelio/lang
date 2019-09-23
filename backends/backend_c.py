@@ -1,7 +1,7 @@
 import subprocess, os
 
 from .exceptions import CompilerBackendException
-from .types import Type, Param, Func, Class, Export
+from .types import Type, Param, Func, Struct, Export
 from .backend_base import BaseBackend
 
 BASE_CODE = """\
@@ -84,54 +84,54 @@ class CBackend(BaseBackend):
                 self.context["includes"] = self.context["includes"] + self.generate_include(node)
             elif node.data in ("function_typed", "function_void"):
                 self.compiled += self.generate_function(node)
-            elif node.data == "class":
-                self.compiled += self.generate_class(node)
+            elif node.data == "struct":
+                self.compiled += self.generate_struct(node)
             else: # node.data == statement
                 self.compiled += self.generate_statement(node)
         
         self.compiled = BASE_CODE + self.context["includes"] + self.context["data_decls"] + self.context["fn_decls"] + self.compiled
     
-    def generate_class(self, ast):
-        if ast.data != "class":
-            raise CompilerBackendException("invalid class type: " + ast.data)
+    def generate_struct(self, ast):
+        if ast.data != "struct":
+            raise CompilerBackendException("invalid struct type: " + ast.data)
 
         compiled = ""
 
-        # Set class name for generate_class_block
-        class_name = ast.children[0].children[0].value
-        self.context["class_name"] = class_name
-        self.export.classes[class_name] = Class()
+        # Set struct name for generate_struct_block
+        struct_name = ast.children[0].children[0].value
+        self.context["struct_name"] = struct_name
+        self.export.structs[struct_name] = Struct()
 
-        class_block = self.generate_class_block(ast.children[1])
+        struct_block = self.generate_struct_block(ast.children[1])
 
         # We put the generated struct in data_decls
         # compiled contains only the generated methods
-        self.context["data_decls"] += f"struct {class_name}{{{class_block}}};"
+        self.context["data_decls"] += f"struct {struct_name}{{{struct_block}}};"
 
-        class_init_block = "" # Block for the class's init function
+        struct_init_block = "" # Block for the struct's init function
 
-        # context.later.methods was set by generate_class_block
+        # context.later.methods was set by generate_struct_block
         # Since it doesn't generate the methods, we do that now
         for name, node in self.context["later"]["methods"].items():
             # Set function pointer in struct to the method we'll generate after
-            class_init_block += f"self->{name}=&__class_{class_name}_{name};"
+            struct_init_block += f"self->{name}=&__struct_{struct_name}_{name};"
             # Generate the method
             compiled += self.generate_function(node, method=True)
 
-        # Create the declaration for the class's init function
-        init_declaration = f"void __class_{class_name}_init(struct {class_name}* self)"
+        # Create the declaration for the struct's init function
+        init_declaration = f"void __struct_{struct_name}_init(struct {struct_name}* self)"
         self.context["fn_decls"] += init_declaration + ";"
 
         # Add the init function after every other method so that it can reference them
         # As stated earlier, compiled only includes the generated methods,
         # since the struct is in data_decls
-        compiled += f"{init_declaration}{{{class_init_block}}}"
+        compiled += f"{init_declaration}{{{struct_init_block}}}"
 
         return compiled
     
-    def generate_class_block(self, ast):
-        if ast.data != "class_block":
-            raise CompilerBackendException("invalid class block type: " + ast.data)
+    def generate_struct_block(self, ast):
+        if ast.data != "struct_block":
+            raise CompilerBackendException("invalid struct block type: " + ast.data)
 
         compiled = ""
 
@@ -142,12 +142,12 @@ class CBackend(BaseBackend):
         }
 
         for node in ast.children:
-            if node.data == "class_property":
+            if node.data == "struct_property":
                 var_type = self.generate_type(node.children[0])
                 var_name = node.children[1].children[0].value
 
-                # Export the class property
-                self.export.classes[self.context["class_name"]].vars[var_name] = self.parse_type(node.children[0])
+                # Export the struct property
+                self.export.structs[self.context["struct_name"]].vars[var_name] = self.parse_type(node.children[0])
 
                 compiled += f"{var_type} {var_name};"
 
@@ -183,9 +183,9 @@ class CBackend(BaseBackend):
             # Raw method name (ex. bar)
             pure_fn_name = ast.children[0].children[0].value
 
-            # Mangled method name (ex. __class_Foo_bar)
-            class_name = self.context["class_name"]
-            fn_name = f"__class_{class_name}_{pure_fn_name}"
+            # Mangled method name (ex. __struct_Foo_bar)
+            struct_name = self.context["struct_name"]
+            fn_name = f"__struct_{struct_name}_{pure_fn_name}"
         else:
             # No mangling if it's a global function,
             # so set both variables to the same value
@@ -207,7 +207,7 @@ class CBackend(BaseBackend):
         self.context["fn_decls"] += fn_declaration + ";"
 
         if method:
-            export = self.export.classes[class_name].fns
+            export = self.export.structs[struct_name].fns
         else:
             export = self.export.fns
 
@@ -240,20 +240,20 @@ class CBackend(BaseBackend):
             inner = ','.join(params)
 
             if method:
-                class_name = self.context["class_name"]
+                struct_name = self.context["struct_name"]
 
                 # Register self as a local variable
                 if self.locals != None:
-                    self.locals["self"] = Type("class", class_name, 1)
+                    self.locals["self"] = Type("struct", struct_name, 1)
                 # Add self as first parameter
-                inner = f"struct {class_name}* self," + inner
+                inner = f"struct {struct_name}* self," + inner
 
             return f"({inner})"
         else:
             if method:
-                class_name = self.context['method_data']['class_name']
+                struct_name = self.context["method_data"]["struct_name"]
 
-                return f"(struct {class_name}* self)"
+                return f"(struct {struct_name}* self)"
             else:
                 # () as parameter list in C means function accepts anything as argument,
                 # so we use (void) instead to not accept arguments
@@ -333,9 +333,9 @@ class CBackend(BaseBackend):
             # Register local variable
             self.locals[var_name] = self.parse_type(ast.children[0])
 
-            if self.locals[var_name].type == "class" and self.locals[var_name].ptr == 0:
-                class_name = ast.children[0].children[0].children[0].value
-                compiled = f"{var_type} {var_name}={{0}};__class_{class_name}_init(&{var_name});"
+            if self.locals[var_name].type == "struct" and self.locals[var_name].ptr == 0:
+                struct_name = ast.children[0].children[0].children[0].value
+                compiled = f"{var_type} {var_name}={{0}};__struct_{struct_name}_init(&{var_name});"
             else:
                 compiled = f"{var_type} {var_name};"
 
@@ -367,9 +367,9 @@ class CBackend(BaseBackend):
 
             if ast.children[0].data in ("expression_dot", "expression_arrow"):
                 method = True
-                # Set class name for generate_argument_list
+                # Set struct name for generate_argument_list
                 op = "&" if ast.children[0].data == "expression_dot" else ""
-                self.context["class_name"] = op + self.generate_expression(ast.children[0].children[0])
+                self.context["struct_name"] = op + self.generate_expression(ast.children[0].children[0])
             else:
                 method = False
 
@@ -383,11 +383,11 @@ class CBackend(BaseBackend):
             type_l = self.infer_type(ast.children[0])
             type_r = self.infer_type(ast.children[2])
 
-            if type_l == type_r and type_l.type == "class" and type_l.ptr == 0:
-                # Check if class implemented overloading for operator
+            if type_l == type_r and type_l.type == "struct" and type_l.ptr == 0:
+                # Check if struct implemented overloading for operator
                 fn_name = f"__{ast.children[1].data}__"
-                if fn_name in self.export.classes[type_l.name].fns:
-                    return f"(__class_{type_l.name}_{fn_name}(&{expr_l},&{expr_r}))"
+                if fn_name in self.export.structs[type_l.name].fns:
+                    return f"(__struct_{type_l.name}_{fn_name}(&{expr_l},&{expr_r}))"
             else:
                 expr_op = OP_BIN_MAP[ast.children[1].data]
                 return f"({expr_l}{expr_op}{expr_r})"
@@ -413,10 +413,10 @@ class CBackend(BaseBackend):
         if ast.data != "argument_list":
             raise CompilerBackendException("invalid argument list type: " + ast.data)
         
-        inner = ','.join(map(self.generate_expression, ast.children))
+        inner = ",".join(map(self.generate_expression, ast.children))
         
         if method:
-            inner = self.context["class_name"] + "," + inner
+            inner = self.context["struct_name"] + "," + inner
 
         return f"({inner})"
     
@@ -448,7 +448,7 @@ class CBackend(BaseBackend):
         if ast.data == "type_builtin":
             return Type("builtin", ast.children[0].data, ptr)
         elif ast.data == "type_userdef":
-            return Type("class", ast.children[0].children[0].value, ptr)
+            return Type("struct", ast.children[0].children[0].value, ptr)
         else:
             raise CompilerBackendException("can't parse unknown type type: " + ast.data)
 
@@ -480,10 +480,10 @@ class CBackend(BaseBackend):
             type_l = self.infer_type(ast.children[0])
             name = ast.children[1].children[0].value
 
-            if not (type_l.type == "class" and type_l.ptr == 1):
-                raise CompilerBackendException("left side of arrow expression is not pointer to class")
+            if not (type_l.type == "struct" and type_l.ptr == 1):
+                raise CompilerBackendException("left side of arrow expression is not pointer to struct")
 
-            return self.export.classes[type_l.name].vars[name]
+            return self.export.structs[type_l.name].vars[name]
 
         elif ast.data == "expression_dot":
             # TODO
