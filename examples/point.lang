@@ -5,14 +5,14 @@ struct Point {
     i32 y
 
     fn translate(i32 x, i32 y) {
-        self->x += x
-        self->y += y
+        self.x += x
+        self.y += y
     }
 
     fn __add__(Point* rhs) Point {
         var Point point
-        point.x = self->x + rhs->x
-        point.y = self->y + rhs->y
+        point.x = self.x + rhs.x
+        point.y = self.y + rhs.y
         return point
     }
 }

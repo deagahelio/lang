@@ -54,7 +54,6 @@ expression: "&" expression -> expression_ref
           | expression argument_list -> expression_function_call
           | expression op_bin expression -> expression_op_bin
           | expression_range
-          | expression "->" ident -> expression_arrow
           | expression "." ident -> expression_dot
           | value -> expression_value
 

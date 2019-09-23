@@ -392,15 +392,22 @@ class CBackend(BaseBackend):
                 expr_op = OP_BIN_MAP[ast.children[1].data]
                 return f"({expr_l}{expr_op}{expr_r})"
 
-        elif ast.data == "expression_arrow":
-            expr = self.generate_expression(ast.children[0])
-            name = ast.children[1].children[0].value
-            return f"({expr}->{name})"
-
         elif ast.data == "expression_dot":
             expr = self.generate_expression(ast.children[0])
+            expr_type = self.infer_type(ast.children[0])
             name = ast.children[1].children[0].value
-            return f"({expr}.{name})"
+
+            if expr_type.type == "struct":
+                if expr_type.ptr == 0:
+                    compiled = f"({expr}.{name})"
+                elif expr_type.ptr == 1:
+                    compiled = f"({expr}->{name})"
+                else:
+                    raise CompilerBackendException("can't use dot operator with multiple pointer layers")
+            else:
+                raise CompilerBackendException("left side of dot expression is not struct or struct pointer")
+
+            return compiled
 
         elif ast.data == "expression_value":
             value = ast.children[0].children[0].value
@@ -476,18 +483,14 @@ class CBackend(BaseBackend):
             else:
                 raise CompilerBackendException("can't apply binary operation to expressions of different type")
 
-        elif ast.data == "expression_arrow":
+        elif ast.data == "expression_dot":
             type_l = self.infer_type(ast.children[0])
             name = ast.children[1].children[0].value
 
-            if not (type_l.type == "struct" and type_l.ptr == 1):
-                raise CompilerBackendException("left side of arrow expression is not pointer to struct")
+            if not type_l.type == "struct":
+                raise CompilerBackendException("left side of dot expression is not struct or struct pointer")
 
             return self.export.structs[type_l.name].vars[name]
-
-        elif ast.data == "expression_dot":
-            # TODO
-            raise CompilerBackendException("don't know how to infer dot expression type")
 
         elif ast.data == "expression_value":
             type = ast.children[0].data
