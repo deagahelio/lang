@@ -5,6 +5,9 @@
 %import common.NEWLINE
 
 %ignore WS
+%ignore COMMENT
+
+COMMENT: "//" /[^\n]/*
 
 ident: CNAME
 
