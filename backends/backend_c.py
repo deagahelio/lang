@@ -25,7 +25,7 @@ TYPE_MAP = {
 }
 
 VALUE_TYPE_MAP = {
-    "number": Type("builtin", "i32", 0),
+    "number": Type("builtin", "int", 0),
     "string": Type("builtin", "u8", 1),
     "true": Type("builtin", "bool", 0),
     "false": Type("builtin", "bool", 0),
@@ -47,6 +47,7 @@ OP_BIN_MAP = {
 }
 
 OVERLOAD_NAMES = [f"__{op}__" for op in OP_BIN_MAP.keys()]
+INT_TYPES = list(TYPE_MAP.keys())[:8]
 
 class CBackend(BaseBackend):
     def __init__(self, args):
@@ -320,6 +321,11 @@ class CBackend(BaseBackend):
             # Infer variable type from expression
             expr_type = self.infer_type(ast.children[1])
 
+            # infer_type returns a type of name "int" for integer literals,
+            # so make sure to set it to the appropriate type before we register it
+            if expr_type.type == "builtin" and expr_type.name == "int":
+                expr_type.name = "i32"
+
             var_type = self.generate_parsed_type(expr_type)
             var_name = ast.children[0].children[0].value
             var_expr = self.generate_expression(ast.children[1])
@@ -335,7 +341,7 @@ class CBackend(BaseBackend):
             var_expr = self.generate_expression(ast.children[2])
 
             # Register local variable
-            self.locals[var_name] = self.parse_type(ast.children[0])
+            self.locals[var_name] = self.parse_type(ast.children[1])
 
             return f"{var_type} {var_name}={var_expr};"
 
@@ -396,14 +402,27 @@ class CBackend(BaseBackend):
             type_l = self.infer_type(ast.children[0])
             type_r = self.infer_type(ast.children[2])
 
-            if type_l == type_r and type_l.type == "struct" and type_l.ptr == 0:
-                # Check if struct implemented overloading for operator
-                fn_name = f"__{ast.children[1].data}__"
-                if fn_name in self.export.structs[type_l.name].fns:
-                    return f"(__struct_{type_l.name}_{fn_name}(&{expr_l},&{expr_r}))"
-            else:
+            if type_l == type_r:
+                if type_l.type == "struct" and type_l.ptr == 0:
+                    # Check if struct implemented overloading for operator
+                    fn_name = f"__{ast.children[1].data}__"
+                    if fn_name in self.export.structs[type_l.name].fns:
+                        return f"(__struct_{type_l.name}_{fn_name}(&{expr_l},&{expr_r}))"
+            # Check if left has defined int type and right is a literal
+            elif ((type_l.type == "builtin" and
+                   type_l.name in INT_TYPES and
+                   type_l.ptr == 0 and
+                   type_r == VALUE_TYPE_MAP["number"]) or
+            # Check if right has defined int type and left is a literal
+                  (type_r.type == "builtin" and
+                   type_r.name in INT_TYPES and
+                   type_r.ptr == 0 and
+                   type_l == VALUE_TYPE_MAP["number"])):
+                # Generate expression
                 expr_op = OP_BIN_MAP[ast.children[1].data]
                 return f"({expr_l}{expr_op}{expr_r})"
+            else:
+                raise CompilerBackendException(f"can't apply binary operation to expressions of different type: {type_l} and {type_r}")
 
         elif ast.data == "expression_dot":
             expr = self.generate_expression(ast.children[0])
@@ -476,11 +495,11 @@ class CBackend(BaseBackend):
         ptr = "*" * type.ptr
 
         if type.type == "builtin":
-            return type.name + ptr
+            return TYPE_MAP[type.name] + ptr
         elif type.type == "struct":
             return "struct " + type.name + ptr
         else:
-            raise CompilerBackendException("invalid type type: " + ast.data)
+            raise CompilerBackendException("invalid type type: " + type.type)
 
     def infer_type(self, ast):
         if ast.data == "expression_ref":
@@ -501,10 +520,19 @@ class CBackend(BaseBackend):
             type_l = self.infer_type(ast.children[0])
             type_r = self.infer_type(ast.children[2])
 
-            if type_l == type_r:
+            if (type_l == type_r or
+                (type_l.type == "builtin" and
+                 type_l.name in INT_TYPES and
+                 type_l.ptr == 0 and
+                 type_r == VALUE_TYPE_MAP["number"])):
                 return type_l
+            elif (type_r.type == "builtin" and
+                  type_r.name in INT_TYPES and
+                  type_r.ptr == 0 and
+                  type_l == VALUE_TYPE_MAP["number"]):
+                return type_r
             else:
-                raise CompilerBackendException("can't apply binary operation to expressions of different type")
+                raise CompilerBackendException(f"can't apply binary operation to expressions of different type: {type_l} and {type_r}")
 
         elif ast.data == "expression_dot":
             type_l = self.infer_type(ast.children[0])
@@ -521,7 +549,8 @@ class CBackend(BaseBackend):
             if type == "ident":
                 return self.locals[ast.children[0].children[0].value]
 
-            return VALUE_TYPE_MAP[type]
+            # Need to make a copy otherwise it returns a reference to the object
+            return VALUE_TYPE_MAP[type].copy()
 
         elif ast.data == "ident":
             return self.locals[ast.children[0].value]

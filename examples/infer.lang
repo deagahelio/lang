@@ -1,0 +1,15 @@
+include "stdio"
+
+fn main() i32 {
+    // Variable type is automatically inferred
+    var foo = 5 // Numbers are i32 by default
+    var hello = "Hello, World!"
+    var bar = foo + 10
+
+    var small_int i16 = 5 // Explicit type
+    var also_small_int = small_int + 1 // Is i16 too 
+
+    printf("%s My numbers: %d, %d\n", hello, bar, also_small_int)
+
+    return 0
+}
