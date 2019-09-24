@@ -15,10 +15,12 @@ TYPE_MAP = {
     "u16": "uint16_t",
     "u32": "uint32_t",
     "u64": "uint64_t",
+    "uptr": "uintptr_t",
     "i8": "int8_t",
     "i16": "int16_t",
     "i32": "int32_t",
     "i64": "int64_t",
+    "iptr": "intptr_t",
     "f32": "float",
     "f64": "double",
     "bool": "bool",
@@ -47,7 +49,7 @@ OP_BIN_MAP = {
 }
 
 OVERLOAD_NAMES = [f"__{op}__" for op in OP_BIN_MAP.keys()]
-INT_TYPES = list(TYPE_MAP.keys())[:8]
+INT_TYPES = list(TYPE_MAP.keys())[:10]
 
 class CBackend(BaseBackend):
     def __init__(self, args):
@@ -63,7 +65,10 @@ class CBackend(BaseBackend):
         self.locals = self.context["locals_stack"][-1]
     
     def pop_locals(self):
-        self.locals = self.context["locals_stack"][-2]
+        if len(self.context["locals_stack"]) == 1:
+            self.locals = None
+        else:
+            self.locals = self.context["locals_stack"][-2]
         return self.context["locals_stack"].pop()
     
     def generate(self, ast):
@@ -76,6 +81,7 @@ class CBackend(BaseBackend):
             "data_decls": "", # Forward declarations for the C code
             "fn_decls": "",
             "locals_stack": [], # This will be initialized later in generate_function
+            "later": {},
         }
         self.locals = None
         self.export = Export()
@@ -138,9 +144,7 @@ class CBackend(BaseBackend):
 
         # We just need to know the declaration of the methods to generate the function pointers,
         # so we won't generate the methods yet
-        self.context["later"] = {
-            "methods": {}
-        }
+        self.context["later"]["methods"] = {}
 
         for node in ast.children:
             if node.data == "struct_property":
@@ -200,8 +204,12 @@ class CBackend(BaseBackend):
 
         fn_params = self.generate_parameter_list(ast.children[1], method=method)       
 
+        export_type = self.parse_type(ast.children[2]) if fn_type != "void" else None
+        export_params = [Param(self.parse_type(node.children[1]), node.children[0].children[0].value) for node in ast.children[1].children]
+
         # Set this for generate_expression
         self.context["current_function"] = fn_name
+        self.context["current_return_type"] = export_type
 
         fn_declaration = f"{fn_type} {fn_name}{fn_params}"
 
@@ -212,12 +220,11 @@ class CBackend(BaseBackend):
         else:
             export = self.export.fns
 
-        export_type = self.parse_type(ast.children[2]) if fn_type != "void" else None
-        export_params = [Param(self.parse_type(node.children[1]), node.children[0].children[0].value) for node in ast.children[1].children]
-
         export[pure_fn_name] = Func(export_type, export_params)
 
         fn_block = self.generate_block(ast.children[-1])
+
+        self.pop_locals()
 
         return f"{fn_declaration}{{{fn_block}}}"
     
@@ -313,9 +320,13 @@ class CBackend(BaseBackend):
             for_var = ast.children[0].children[0].value
             for_start = ast.children[1].children[0].children[0].value
             for_end = ast.children[1].children[1].children[0].value
+
+            # Register loop variable as local
+            self.locals[for_var] = Type("builtin", "uptr", 0)
+
             for_block = self.generate_block(ast.children[2])
 
-            return f"for(size_t {for_var}={for_start};{for_var}<{for_end};{for_var}++){{{for_block}}}"
+            return f"for(uintptr_t {for_var}={for_start};{for_var}<{for_end};{for_var}++){{{for_block}}}"
 
         elif ast.data == "statement_variable_define_auto":
             # Infer variable type from expression
@@ -379,7 +390,8 @@ class CBackend(BaseBackend):
             return f"(*{expr})"
 
         elif ast.data == "expression_function_call":
-            fn_name = self.generate_expression(ast.children[0])
+            # TODO: change this back to expression someday
+            fn_name = ast.children[0].children[0].value
             # TODO: make this handle methods (if it doesn't already)
             if fn_name == "this":
                 fn_name = self.context["current_function"]
@@ -418,11 +430,13 @@ class CBackend(BaseBackend):
                    type_r.name in INT_TYPES and
                    type_r.ptr == 0 and
                    type_l == VALUE_TYPE_MAP["number"])):
-                # Generate expression
-                expr_op = OP_BIN_MAP[ast.children[1].data]
-                return f"({expr_l}{expr_op}{expr_r})"
+                pass
             else:
                 raise CompilerBackendException(f"can't apply binary operation to expressions of different type: {type_l} and {type_r}")
+
+            # Generate expression
+            expr_op = OP_BIN_MAP[ast.children[1].data]
+            return f"({expr_l}{expr_op}{expr_r})"
 
         elif ast.data == "expression_dot":
             expr = self.generate_expression(ast.children[0])
@@ -513,8 +527,14 @@ class CBackend(BaseBackend):
             return type._replace(ptr=type.ptr - 1)
 
         elif ast.data == "expression_function_call":
-            # TODO
-            raise CompilerBackendException("don't know how to infer function call type")
+            fn_name = ast.children[0].children[0].value
+
+            if fn_name == "this":
+                return self.context["current_return_type"]
+            if fn_name in self.export.fns:
+                return self.export.fns[fn_name].type
+            else:
+                raise CompilerBackendException("function doesn't exist: " + fn_name)
 
         elif ast.data == "expression_op_bin":
             type_l = self.infer_type(ast.children[0])
