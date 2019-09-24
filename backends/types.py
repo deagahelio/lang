@@ -15,6 +15,9 @@ class Type:
     def __str__(self, i=0):
         return i * "\t" + f"{self.name}{self.ptr * '*'}"
 
+    def copy(self):
+        return Type(self.type, self.name, self.ptr)
+
     def str(self, i=0):
         return self.__str__(i)
 
@@ -30,6 +33,9 @@ class Param:
 
     def __str__(self, i=0):
         return i * "\t" + f"{str(self.type)} {self.name}"
+    
+    def copy(self):
+        return Param(self.type, self.name)
     
     def str(self, i=0):
         return self.__str__(i)
@@ -52,6 +58,9 @@ class Func:
     name=name,
     params=", ".join(param.str() for param in self.params),
     i=i * "\t")
+
+    def copy(self):
+        return Func(self.type, self.params)
 
     def str(self, name="", i=0):
         return self.__str__(name, i)
@@ -81,6 +90,9 @@ class Struct:
     fns="\n".join(v.str(k, i + 1) for k, v in self.fns.items()),
     overloads="\n".join(v.str(k, i + 1) for k, v in self.overloads.items()),
     i=i * "\t")
+
+    def copy(self):
+        return Struct(self.vars, self.fns, self.overloads)
 
     def str(self, name="", i=0):
         return self.__str__(name, i)
@@ -115,6 +127,9 @@ class Export:
     fns="\n".join(v.str(k, i + 2) for k, v in self.fns.items()),
     vars="\n".join(v.str(k, i + 2) for k, v in self.vars.items()),
     i=i * "\t")
+
+    def copy(self):
+        return Export(self.structs, self.fns, self.vars)
 
     def str(self, i=0):
         return self.__str__(i)
