@@ -1,16 +1,16 @@
 include "stdio"
 
 struct Point {
-    i32 x
-    i32 y
+    x i32
+    y i32
 
-    fn translate(i32 x, i32 y) {
+    fn translate(x i32, y i32) {
         self.x += x
         self.y += y
     }
 
-    fn __add__(Point* rhs) Point {
-        var Point point
+    fn __add__(rhs Point*) Point {
+        var point Point
         point.x = self.x + rhs.x
         point.y = self.y + rhs.y
         return point
@@ -18,15 +18,15 @@ struct Point {
 }
 
 fn main() i32 {
-    var Point point1
+    var point1 Point
     point1.x = 2
     point1.y = 3
 
-    var Point point2
+    var point2 Point
     point2.x = 5
     point2.y = 6
 
-    var Point point3 = point1 + point2
+    var point3 = point1 + point2
     printf("%d %d\n", point3.x, point3.y)
 
     return 0

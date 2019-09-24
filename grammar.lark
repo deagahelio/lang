@@ -58,8 +58,8 @@ expression: "&" expression -> expression_ref
           | value -> expression_value
 
 variable_statement: "var" ident "=" expression NEWLINE -> statement_variable_define_auto
-                  | "var" type ident "=" expression NEWLINE -> statement_variable_define
-                  | "var" type ident NEWLINE -> statement_variable_declare
+                  | "var" ident type "=" expression NEWLINE -> statement_variable_define
+                  | "var" ident type NEWLINE -> statement_variable_declare
                   | expression "=" expression NEWLINE -> statement_variable_assign
 
 ?statement: expression NEWLINE // TODO: fix this
@@ -72,13 +72,13 @@ variable_statement: "var" ident "=" expression NEWLINE -> statement_variable_def
 
 block: "{" statement* "}"
 
-parameter_list_item: type ident
+parameter_list_item: ident type
 parameter_list: "(" [parameter_list_item ("," parameter_list_item)*] ")"
 
 ?function: "fn" ident parameter_list type block -> function_typed
          | "fn" ident parameter_list block -> function_void
 
-struct_property: type ident NEWLINE
+struct_property: ident type NEWLINE
 
 struct_block: "{" struct_property* function* "}"
 

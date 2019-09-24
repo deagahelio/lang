@@ -143,11 +143,11 @@ class CBackend(BaseBackend):
 
         for node in ast.children:
             if node.data == "struct_property":
-                var_type = self.generate_type(node.children[0])
-                var_name = node.children[1].children[0].value
+                var_type = self.generate_type(node.children[1])
+                var_name = node.children[0].children[0].value
 
                 # Export the struct property
-                self.export.structs[self.context["struct_name"]].vars[var_name] = self.parse_type(node.children[0])
+                self.export.structs[self.context["struct_name"]].vars[var_name] = self.parse_type(node.children[1])
 
                 compiled += f"{var_type} {var_name};"
 
@@ -212,7 +212,7 @@ class CBackend(BaseBackend):
             export = self.export.fns
 
         export_type = self.parse_type(ast.children[2]) if fn_type != "void" else None
-        export_params = [Param(self.parse_type(node.children[0]), node.children[1].children[0].value) for node in ast.children[1].children]
+        export_params = [Param(self.parse_type(node.children[1]), node.children[0].children[0].value) for node in ast.children[1].children]
 
         export[pure_fn_name] = Func(export_type, export_params)
 
@@ -228,14 +228,14 @@ class CBackend(BaseBackend):
             params = []
 
             for node in ast.children:
-                var_name = node.children[1].children[0].value
-                var_type = self.generate_type(node.children[0])
+                var_name = node.children[0].children[0].value
+                var_type = self.generate_type(node.children[1])
 
                 params.append(f"{var_type} {var_name}")
 
                 # Register parameter as a local variable so it can be referenced later in the function
                 if self.locals != None:
-                    self.locals[var_name] = self.parse_type(node.children[0])
+                    self.locals[var_name] = self.parse_type(node.children[1])
 
             inner = ','.join(params)
 
@@ -316,9 +316,22 @@ class CBackend(BaseBackend):
 
             return f"for(size_t {for_var}={for_start};{for_var}<{for_end};{for_var}++){{{for_block}}}"
 
+        elif ast.data == "statement_variable_define_auto":
+            # Infer variable type from expression
+            expr_type = self.infer_type(ast.children[1])
+
+            var_type = self.generate_parsed_type(expr_type)
+            var_name = ast.children[0].children[0].value
+            var_expr = self.generate_expression(ast.children[1])
+
+            # Register local variable
+            self.locals[var_name] = expr_type
+
+            return f"{var_type} {var_name}={var_expr};"
+
         elif ast.data == "statement_variable_define":
-            var_type = self.generate_type(ast.children[0])
-            var_name = ast.children[1].children[0].value
+            var_type = self.generate_type(ast.children[1])
+            var_name = ast.children[0].children[0].value
             var_expr = self.generate_expression(ast.children[2])
 
             # Register local variable
@@ -327,14 +340,14 @@ class CBackend(BaseBackend):
             return f"{var_type} {var_name}={var_expr};"
 
         elif ast.data == "statement_variable_declare":
-            var_type = self.generate_type(ast.children[0])
-            var_name = ast.children[1].children[0].value
+            var_type = self.generate_type(ast.children[1])
+            var_name = ast.children[0].children[0].value
 
             # Register local variable
-            self.locals[var_name] = self.parse_type(ast.children[0])
+            self.locals[var_name] = self.parse_type(ast.children[1])
 
             if self.locals[var_name].type == "struct" and self.locals[var_name].ptr == 0:
-                struct_name = ast.children[0].children[0].children[0].value
+                struct_name = ast.children[1].children[0].children[0].value
                 compiled = f"{var_type} {var_name}={{0}};__struct_{struct_name}_init(&{var_name});"
             else:
                 compiled = f"{var_type} {var_name};"
@@ -458,6 +471,16 @@ class CBackend(BaseBackend):
             return Type("struct", ast.children[0].children[0].value, ptr)
         else:
             raise CompilerBackendException("can't parse unknown type type: " + ast.data)
+    
+    def generate_parsed_type(self, type):
+        ptr = "*" * type.ptr
+
+        if type.type == "builtin":
+            return type.name + ptr
+        elif type.type == "struct":
+            return "struct " + type.name + ptr
+        else:
+            raise CompilerBackendException("invalid type type: " + ast.data)
 
     def infer_type(self, ast):
         if ast.data == "expression_ref":
